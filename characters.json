@@ -2,7 +2,7 @@
   "meta": {
     "version": "1.2",
     "description": "Pre-generated character database for Homeroom — Class of 2026. Updated with 109 evenly distributed characters.",
-    "imagePath": "images/",
+    "imagePath": "images/avatars",
     "dataPath": "data/",
     "classes": {
       "1A": {
