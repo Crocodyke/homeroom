@@ -305,7 +305,75 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--ink);color:var(--ink
 .m-btn.primary{background:var(--accent);color:#fff;} .m-btn.primary:hover{background:#a02020;}
 .m-btn.secondary{background:var(--cream);color:var(--ink);border:1.5px solid var(--border);} .m-btn.secondary:hover{background:var(--border);}
 
+
+/* ══ RELATIONSHIP SYSTEM ══ */
+/* Affinity bar in profile modal */
+.rel-bar-wrap { margin: 10px 0 6px; }
+.rel-bar-label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: 'Bebas Neue', sans-serif; font-size: 11px; letter-spacing: .18em;
+  color: var(--muted); margin-bottom: 4px;
+}
+.rel-bar-level {
+  font-size: 10px; letter-spacing: .1em;
+  padding: 2px 7px; border-radius: 99px;
+  background: var(--cream); color: var(--ink);
+}
+.rel-bar-track {
+  height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+}
+.rel-bar-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--blue), var(--accent));
+  transition: width .4s ease;
+}
+/* Mood badge */
+.rel-mood {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: 'Special Elite', serif; font-size: 10px;
+  color: var(--muted); margin-top: 4px;
+}
+.rel-mood-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+/* Trust rate dots */
+.rel-trust-dots { display: flex; gap: 3px; margin-top: 3px; }
+.rel-trust-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--border); flex-shrink: 0; transition: background .2s;
+}
+.rel-trust-dot.filled { background: var(--gold); }
+/* Interaction log */
+.rel-log {
+  margin-top: 8px; max-height: 80px; overflow-y: auto;
+  background: var(--cream); border-radius: 3px; padding: 6px 8px;
+}
+.rel-log-entry {
+  font-family: 'Special Elite', serif; font-size: 9.5px;
+  color: var(--muted); line-height: 1.6; border-bottom: 1px solid var(--border);
+  padding-bottom: 2px; margin-bottom: 2px;
+}
+.rel-log-entry:last-child { border-bottom: none; margin-bottom: 0; }
+.rel-log-entry .rel-delta-pos { color: var(--green); }
+.rel-log-entry .rel-delta-neg { color: var(--accent); }
+/* Roster card: level badge + mood dot overlay */
+.pc-rel-badge {
+  position: absolute; bottom: 6px; right: 6px;
+  font-family: 'Bebas Neue', sans-serif; font-size: 8px; letter-spacing: .08em;
+  padding: 1px 5px; border-radius: 99px;
+  background: var(--cream); color: var(--muted);
+  border: 1px solid var(--border);
+}
+.pc-mood-dot {
+  position: absolute; top: 6px; right: 6px;
+  width: 8px; height: 8px; border-radius: 50%;
+  border: 1.5px solid #fff;
+}
+/* Level-up toast variant */
+.toast.toast-levelup { background: var(--gold); color: var(--ink); font-weight: 700; }
+
 ::-webkit-scrollbar{width:4px;height:4px;} ::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12);border-radius:2px;}
+
 
 /* ══ CHAT PANEL ══ */
 #chat-panel{
@@ -452,8 +520,362 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--ink);color:var(--ink
 
 </style>
 
-<script src="school-clock.js"></script>
-<script src="chat-engine.js"></script>
+<script>
+/**
+ * school-clock.js
+ * Drives a simulated school day that advances in real time.
+ * The school day is 10× accelerated so one real minute = 10 school minutes.
+ */
+const SchoolClock = (() => {
+  // ── School schedule (24h) ──────────────────────────────────────
+  // Each phase: [startH, startM] → [endH, endM], inClass, label, id
+  const WEEKDAY_PHASES = [
+    { id:'before-school', start:[0,0],  end:[8,0],  inClass:false, label:'Before School' },
+    { id:'period-1',      start:[8,0],  end:[9,0],  inClass:true,  label:'1st Period' },
+    { id:'break-1',       start:[9,0],  end:[9,15], inClass:false, label:'Morning Break' },
+    { id:'period-2',      start:[9,15], end:[10,15],inClass:true,  label:'2nd Period' },
+    { id:'period-3',      start:[10,15],end:[11,15],inClass:true,  label:'3rd Period' },
+    { id:'lunch',         start:[11,15],end:[12,15],inClass:false, label:'Lunch' },
+    { id:'period-4',      start:[12,15],end:[13,15],inClass:true,  label:'4th Period' },
+    { id:'period-5',      start:[13,15],end:[14,15],inClass:true,  label:'5th Period' },
+    { id:'break-2',       start:[14,15],end:[14,30],inClass:false, label:'Afternoon Break' },
+    { id:'period-6',      start:[14,30],end:[15,30],inClass:true,  label:'6th Period' },
+    { id:'after-school',  start:[15,30],end:[24,0], inClass:false, label:'After School' },
+  ];
+
+  const WEEKEND_PHASES = [
+    { id:'weekend', start:[0,0], end:[24,0], inClass:false, label:'Weekend' },
+  ];
+
+  // ── Internal state ─────────────────────────────────────────────
+  let _tickInterval = null;
+  let _phaseHandlers = [];
+  let _tickHandlers  = [];
+  let _lastPhaseId   = null;
+
+  // Acceleration: 1 real second = ACCEL school seconds
+  const ACCEL = 10;
+  // Epoch: treat real-world time but scale minutes within the day
+  // We use actual wall-clock time so the school day repeats every real 2.4 hours
+  // (24 school hours / 10 accel = 2.4 real hours per school day)
+
+  function _schoolMinutes() {
+    const now = new Date();
+    const realMs = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) * 1000 + now.getMilliseconds();
+    const schoolMs = realMs * ACCEL;
+    const dayMs = 24 * 60 * 60 * 1000;
+    return (schoolMs % dayMs) / 60000; // school minutes since midnight
+  }
+
+  function _isWeekend() {
+    const day = new Date().getDay();
+    return day === 0 || day === 6;
+  }
+
+  function _getPhase(schoolMin) {
+    const phases = _isWeekend() ? WEEKEND_PHASES : WEEKDAY_PHASES;
+    for (const p of phases) {
+      const start = p.start[0] * 60 + p.start[1];
+      const end   = p.end[0]   * 60 + p.end[1];
+      if (schoolMin >= start && schoolMin < end) return p;
+    }
+    return WEEKDAY_PHASES[WEEKDAY_PHASES.length - 1]; // fallback: after school
+  }
+
+  function _formatTime(schoolMin) {
+    const h = Math.floor(schoolMin / 60) % 24;
+    const m = Math.floor(schoolMin % 60);
+    const ampm = h < 12 ? 'AM' : 'PM';
+    const h12  = ((h % 12) || 12);
+    return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+  }
+
+  function _dateLabel() {
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    return days[new Date().getDay()];
+  }
+
+  function getState() {
+    const schoolMin = _schoolMinutes();
+    const phase     = _getPhase(schoolMin);
+    return {
+      schoolMin,
+      phase,
+      phaseId:    phase.id,
+      phaseLabel: phase.label,
+      inClass:    phase.inClass,
+      isWeekend:  _isWeekend(),
+      timeString: _formatTime(schoolMin),
+      dayLabel:   _dateLabel(),
+    };
+  }
+
+  function getCurrentPeriodNumber() {
+    const state = getState();
+    if (!state.inClass) return null;
+    const classPeriods = WEEKDAY_PHASES.filter(p => p.inClass);
+    const idx = classPeriods.findIndex(p => p.id === state.phaseId);
+    return idx >= 0 ? idx + 1 : null;
+  }
+
+  function getWeekdayPhases() { return WEEKDAY_PHASES; }
+  function getWeekendPhases()  { return WEEKEND_PHASES; }
+
+  function onPhaseChange(fn) { _phaseHandlers.push(fn); }
+  function onTick(fn)        { _tickHandlers.push(fn); }
+
+  function start() {
+    if (_tickInterval) clearInterval(_tickInterval);
+
+    // Update topbar clock every real second
+    _tickInterval = setInterval(() => {
+      const state = getState();
+
+      // Update topbar elements if present
+      const tbTime   = document.getElementById('tb-time');
+      const tbPeriod = document.getElementById('tb-period');
+      if (tbTime)   tbTime.textContent   = state.timeString;
+      if (tbPeriod) tbPeriod.textContent = state.phaseLabel;
+
+      // Fire tick handlers
+      _tickHandlers.forEach(fn => fn({ phase: state }));
+
+      // Detect phase change
+      if (state.phaseId !== _lastPhaseId) {
+        _lastPhaseId = state.phaseId;
+        const dateStr = `${state.dayLabel} · ${state.timeString}`;
+        _phaseHandlers.forEach(fn => fn({ phase: state, date: dateStr }));
+      }
+    }, 1000);
+  }
+
+  function stop() {
+    if (_tickInterval) { clearInterval(_tickInterval); _tickInterval = null; }
+  }
+
+  return { start, stop, getState, getCurrentPeriodNumber, onPhaseChange, onTick, getWeekdayPhases, getWeekendPhases };
+})();
+
+</script>
+<script>
+/**
+ * relationship.js
+ * Trait-based relationship system with dynamic mood and trust mechanics.
+ * Every character gets a full profile automatically from their tags.
+ * No AI required — pure tag-driven logic.
+ */
+const Relationships = (() => {
+
+  // ── Affinity levels ────────────────────────────────────────────
+  const LEVELS = [
+    { min:0,  label:'Stranger' },
+    { min:12, label:'Noticed' },
+    { min:25, label:'Acquaintance' },
+    { min:42, label:'Friendly' },
+    { min:58, label:'Friend' },
+    { min:75, label:'Close Friend' },
+    { min:90, label:'Bond' },
+  ];
+
+  function _levelFor(affinity) {
+    let result = LEVELS[0];
+    for (const l of LEVELS) { if (affinity >= l.min) result = l; }
+    return result.label;
+  }
+
+  // ── Baseline affinity from tags ────────────────────────────────
+  // Cold-start tags → low baseline; warm-start tags → higher baseline
+  const COLD_TAGS = ['antisocial','villain','brooding','cynical','aggressive','stoic','ruthless','cold'];
+  const WARM_TAGS = ['warm','friendly','earnest','cheerful','optimistic','caring','loyal','enthusiastic'];
+
+  function _baseline(tags) {
+    const t = (tags || []).map(s => s.toLowerCase());
+    const hasCold = COLD_TAGS.some(ct => t.some(tag => tag.includes(ct)));
+    const hasWarm = WARM_TAGS.some(wt => t.some(tag => tag.includes(wt)));
+    if (hasCold && !hasWarm) return 5 + Math.random() * 15;  // 5–20
+    if (hasWarm && !hasCold) return 35 + Math.random() * 15; // 35–50
+    return 18 + Math.random() * 12;                           // 18–30 neutral
+  }
+
+  // ── Trust rate from tags ───────────────────────────────────────
+  // How quickly affinity changes per interaction (0.2–2.0×)
+  const SLOW_TAGS  = ['reserved','cynical','stoic','brooding','antisocial','paranoid','cold'];
+  const FAST_TAGS  = ['warm','friendly','naive','earnest','trusting','open','social'];
+
+  function _trustRate(tags) {
+    const t = (tags || []).map(s => s.toLowerCase());
+    const slowCount = SLOW_TAGS.filter(st => t.some(tag => tag.includes(st))).length;
+    const fastCount = FAST_TAGS.filter(ft => t.some(tag => tag.includes(ft))).length;
+    const rate = 1.0 + (fastCount * 0.2) - (slowCount * 0.25);
+    return Math.max(0.2, Math.min(2.0, rate));
+  }
+
+  // ── Tone detection ─────────────────────────────────────────────
+  const TONE_PATTERNS = {
+    optimistic: /\b(hope|great|amazing|wonderful|good|nice|love|happy|excited|awesome|yeah|yay|yes|sure)\b/i,
+    chaotic:    /\b(random|chaos|crazy|wild|weird|lol|lmao|haha|wtf|omg|bruh|no way)\b/i,
+    formal:     /\b(indeed|certainly|moreover|therefore|respectfully|regarding|pursuant|sincerely)\b/i,
+    assertive:  /\b(must|need|should|have to|will|demand|insist|now|immediately|listen)\b/i,
+    curious:    /\b(why|how|what|when|where|who|wonder|curious|tell me|explain|know)\b/i,
+    humorous:   /\b(funny|joke|haha|lol|laugh|hilarious|pun|wit|kidding|jk)\b/i,
+    empathetic: /\b(understand|feel|sorry|care|listen|here for you|tough|hard|must be|relate)\b/i,
+    passive:    /\b(whatever|fine|sure|ok|okay|i guess|maybe|probably|dunno|idk)\b/i,
+    aggressive: /\b(shut up|stupid|idiot|hate|worst|terrible|awful|leave me|go away|back off)\b/i,
+  };
+
+  function _detectTone(text) {
+    for (const [tone, pat] of Object.entries(TONE_PATTERNS)) {
+      if (pat.test(text)) return tone;
+    }
+    return 'neutral';
+  }
+
+  // ── Compatibility matrix ───────────────────────────────────────
+  // For each tone: which tags get a bonus, which get a penalty
+  const COMPAT = {
+    optimistic:  { bonus:['cheerful','warm','earnest','friendly'],       penalty:['cynical','brooding','villain','cold'] },
+    chaotic:     { bonus:['chaotic','impulsive','funny','trickster'],    penalty:['stoic','formal','lawful','reserved'] },
+    formal:      { bonus:['stoic','reserved','honorable','composed'],    penalty:['chaotic','impulsive','informal'] },
+    assertive:   { bonus:['competitive','leader','warrior','brave'],     penalty:['anxious','timid','passive'] },
+    curious:     { bonus:['intelligent','curious','bookish','nerd'],     penalty:['antisocial','impatient'] },
+    humorous:    { bonus:['funny','sarcastic','trickster','playful'],    penalty:['serious','stoic','brooding'] },
+    empathetic:  { bonus:['warm','caring','gentle','loyal'],             penalty:['cold','antisocial','ruthless'] },
+    passive:     { bonus:['reserved','calm','quiet'],                    penalty:['energetic','competitive','aggressive'] },
+    aggressive:  { bonus:['aggressive','brawler','villain','ruthless'],  penalty:['warm','gentle','earnest','optimistic'] },
+    neutral:     { bonus:[], penalty:[] },
+  };
+
+  function _compatDelta(tone, tags) {
+    const t = (tags || []).map(s => s.toLowerCase());
+    const { bonus, penalty } = COMPAT[tone] || COMPAT.neutral;
+    let delta = 0;
+    bonus.forEach(b   => { if (t.some(tag => tag.includes(b))) delta += 3; });
+    penalty.forEach(p => { if (t.some(tag => tag.includes(p))) delta -= 2.5; });
+    return delta;
+  }
+
+  // ── Mood system ────────────────────────────────────────────────
+  const MOODS = ['happy','excited','neutral','restless','sad','irritated','tired'];
+  let _currentPhase = 'after-school';
+
+  // Phase → mood tendencies for different character types
+  function _computeMood(cid) {
+    const rel  = _state[cid];
+    if (!rel) return 'neutral';
+    const tags = rel.tags || [];
+    const t    = tags.map(s => s.toLowerCase());
+
+    const isEnergetic = t.some(tag => ['energetic','impulsive','chaotic','competitive','loud'].includes(tag));
+    const isCalm      = t.some(tag => ['calm','stoic','reserved','quiet','composed'].includes(tag));
+    const isWarm      = WARM_TAGS.some(wt => t.some(tag => tag.includes(wt)));
+
+    // Base mood from recent affinity shift
+    const recentDelta = (rel.history || []).slice(-3).reduce((s, h) => s + h.delta, 0);
+
+    let mood = 'neutral';
+
+    // Phase modifiers
+    if (_currentPhase === 'lunch') {
+      mood = isWarm ? 'happy' : 'neutral';
+    } else if (_currentPhase.startsWith('period')) {
+      mood = isEnergetic ? 'restless' : isCalm ? 'neutral' : 'neutral';
+    } else if (_currentPhase === 'after-school') {
+      mood = isEnergetic ? 'excited' : 'neutral';
+    } else if (_currentPhase === 'before-school') {
+      mood = isCalm ? 'tired' : 'neutral';
+    }
+
+    // Shift from recent interaction
+    if (recentDelta > 5)  mood = isEnergetic ? 'excited' : 'happy';
+    if (recentDelta < -5) mood = isWarm ? 'sad' : 'irritated';
+
+    return mood;
+  }
+
+  // ── Persistent state ───────────────────────────────────────────
+  const LS_KEY = 'hr2_rels';
+  let _state = {}; // keyed by characterId
+
+  function load() {
+    try {
+      const saved = localStorage.getItem(LS_KEY);
+      if (saved) _state = JSON.parse(saved);
+    } catch (e) { _state = {}; }
+  }
+
+  function save() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(_state)); } catch (e) {}
+  }
+
+  // Seed every character that doesn't have a record yet
+  function init(characters) {
+    let dirty = false;
+    Object.values(characters).forEach(c => {
+      const id = c.id || c.runtimeId;
+      if (!id) return;
+      if (!_state[id]) {
+        const affinity = _baseline(c.tags);
+        _state[id] = {
+          affinity,
+          level:     _levelFor(affinity),
+          trustRate: _trustRate(c.tags),
+          tags:      c.tags || [],
+          history:   [],
+        };
+        dirty = true;
+      }
+    });
+    if (dirty) save();
+  }
+
+  // Get relationship record for a character
+  function get(cid) {
+    return _state[cid] || { affinity:0, level:'Stranger', trustRate:1.0, tags:[], history:[] };
+  }
+
+  // Get current mood for a character
+  function getMood(cid) {
+    return _computeMood(cid);
+  }
+
+  // Notify relationship engine of a school phase change
+  function onPhase(phaseId) {
+    _currentPhase = phaseId;
+  }
+
+  // Process a player message against a character, return result
+  function processMessage(cid, text, multiplier = 1.0) {
+    const rel = _state[cid];
+    if (!rel) return null;
+
+    const tone    = _detectTone(text);
+    const compat  = _compatDelta(tone, rel.tags);
+    // Base delta: small random + compat + trust rate + multiplier
+    const base    = (Math.random() * 1.5 + 0.5); // 0.5–2.0 base
+    let delta     = (base + compat) * rel.trustRate * multiplier;
+    // Clamp delta to avoid runaway swings
+    delta = Math.max(-8, Math.min(10, delta));
+
+    const prevLevel = rel.level;
+    rel.affinity    = Math.max(0, Math.min(100, rel.affinity + delta));
+    rel.level       = _levelFor(rel.affinity);
+
+    // Record interaction
+    rel.history = rel.history || [];
+    rel.history.push({ ts: Date.now(), tone, delta: parseFloat(delta.toFixed(2)) });
+    if (rel.history.length > 50) rel.history = rel.history.slice(-50); // keep last 50
+
+    save();
+
+    const levelUp = rel.level !== prevLevel && rel.affinity > _state[cid]?.affinity - delta;
+    return { delta, tone, newLevel: rel.level, levelUp: rel.level !== prevLevel };
+  }
+
+  return { load, init, get, getMood, onPhase, processMessage };
+})();
+
+</script>
+<!-- chat-engine.js would load here if present -->
 </head>
 <body>
 
@@ -708,7 +1130,8 @@ const DB_MAP = {};
 const LS = {
   player:'hr2_player', chars:'hr2_chars', avatars:'hr2_avatars',
   homerooms:'hr2_homerooms', detention:'hr2_detention',
-  locations:'hr2_locs', popularity:'hr2_pop'
+  locations:'hr2_locs', popularity:'hr2_pop',
+  relationships:'hr2_rels'
 };
 const IMG_PFX = 'hr2_img_';
 
@@ -968,7 +1391,13 @@ function showToast(msg) {
 // ═══════════════════════════════════════════════════════
 function initApp() {
   restore();
-  
+
+  // Boot relationship engine
+  if (typeof Relationships !== 'undefined') {
+    Relationships.load();
+    Relationships.init(characters);
+  }
+
   if (Object.keys(characters).length === 0) {
     EMBEDDED_DB.characters.forEach(c => {
       characters[c.id] = { ...c, runtimeId: c.id };
@@ -1035,6 +1464,9 @@ function startClock() {
 
   // Announce phase transitions in the active chat room
   SchoolClock.onPhaseChange(({ phase, date }) => {
+    if (typeof Relationships !== 'undefined') {
+      Relationships.onPhase(phase.id);
+    }
     if (_activeChatRoom && typeof appendSystemMessage === 'function') {
       appendSystemMessage(`${phase.label} — ${date}`);
     }
@@ -1511,17 +1943,52 @@ function renderHangouts() {
 function renderRoster() {
   const grid = document.getElementById('roster-grid');
   grid.innerHTML = '';
-  Object.keys(characters).forEach(cid => {
+
+  // Sort by affinity descending if Relationships engine is available
+  let charIds = Object.keys(characters);
+  if (typeof Relationships !== 'undefined') {
+    charIds = charIds.sort((a, b) => {
+      const ra = Relationships.get(a).affinity;
+      const rb = Relationships.get(b).affinity;
+      return rb - ra;
+    });
+  }
+
+  const moodColors = {
+    happy:'#4caf50', excited:'#ff9800', neutral:'#9e9e9e',
+    restless:'#ff5722', sad:'#2196f3', irritated:'#f44336', tired:'#795548'
+  };
+
+  charIds.forEach(cid => {
     const c = characters[cid];
     const card = document.createElement('div');
     card.className = 'profile-card';
+    card.style.position = 'relative';
     card.appendChild(makeAv(cid, 54));
-    
+
     const name = document.createElement('div');
     name.className = 'pc-name';
     name.textContent = c.name;
     card.appendChild(name);
-    
+
+    // Relationship overlays
+    if (typeof Relationships !== 'undefined') {
+      const rel  = Relationships.get(cid);
+      const mood = Relationships.getMood(cid);
+
+      // Level badge (bottom-right)
+      const badge = document.createElement('span');
+      badge.className = 'pc-rel-badge';
+      badge.textContent = rel.level;
+      card.appendChild(badge);
+
+      // Mood dot (top-right)
+      const dot = document.createElement('span');
+      dot.className = 'pc-mood-dot';
+      dot.style.background = moodColors[mood] || '#9e9e9e';
+      card.appendChild(dot);
+    }
+
     card.onclick = () => openProfileModal(cid);
     grid.appendChild(card);
   });
@@ -1632,7 +2099,60 @@ function openProfileModal(cid) {
   const c = characters[cid];
   if (!c) return;
   const content = document.getElementById('profile-modal-content');
-  
+
+  // ── Relationship data ─────────────────────────────────────────
+  let relHtml = '';
+  if (typeof Relationships !== 'undefined') {
+    const rel      = Relationships.get(cid);
+    const affinity = rel.affinity;
+    const level    = rel.level;
+    const mood     = Relationships.getMood(cid);
+    const trustRate = rel.trustRate;
+    const history  = rel.history || [];
+
+    const moodColors = {
+      happy:'#4caf50', excited:'#ff9800', neutral:'#9e9e9e',
+      restless:'#ff5722', sad:'#2196f3', irritated:'#f44336', tired:'#795548'
+    };
+    const moodDotColor = moodColors[mood] || '#9e9e9e';
+
+    const trustFilled = Math.round(Math.min(trustRate, 2.0) * 5);
+    const trustDots = Array.from({length: 10}, (_, i) =>
+      `<span class="rel-trust-dot${i < trustFilled ? ' filled' : ''}"></span>`
+    ).join('');
+
+    const logEntries = history.slice(-5).reverse().map(h => {
+      const sign = h.delta >= 0 ? '+' : '';
+      const cls  = h.delta >= 0 ? 'rel-delta-pos' : 'rel-delta-neg';
+      const ago  = _timeAgo(h.ts);
+      return `<div class="rel-log-entry"><span class="${cls}">${sign}${h.delta.toFixed(1)}</span> — ${h.tone} tone · ${ago}</div>`;
+    }).join('');
+
+    relHtml = `
+      <div class="pd-section">
+        <div class="pd-sect-title">Relationship Status</div>
+        <div class="rel-bar-wrap">
+          <div class="rel-bar-label">
+            <span>Affinity</span>
+            <span class="rel-bar-level">${level}</span>
+          </div>
+          <div class="rel-bar-track">
+            <div class="rel-bar-fill" style="width:${affinity}%"></div>
+          </div>
+        </div>
+        <div class="rel-mood">
+          <span class="rel-mood-dot" style="background:${moodDotColor}"></span>
+          Mood: <strong>${mood}</strong>
+        </div>
+        <div style="font-family:'Special Elite',serif;font-size:10px;color:var(--muted);margin-top:5px;">
+          Trust rate
+          <div class="rel-trust-dots">${trustDots}</div>
+        </div>
+        ${logEntries ? `<div class="rel-log">${logEntries}</div>` : ''}
+      </div>
+    `;
+  }
+
   content.innerHTML = `
     <div class="m-title">Student Tracking Record</div>
     <div class="pd-hero">
@@ -1649,12 +2169,13 @@ function openProfileModal(cid) {
         ${buildProfileBlurb(c)}
       </div>
     </div>
+    ${relHtml}
     <div class="pd-actions">
       <button class="pd-act-btn" onclick="toggleDetention('${cid}')">${detention[cid] ? 'Clear Profile' : 'Flag Disciplinary Actions'}</button>
       <button class="pd-act-btn" onclick="closeOverlay('profile-modal')">Close Window</button>
     </div>
   `;
-  
+
   content.querySelector('#modal-av-placeholder').appendChild(makeAv(cid, 72));
   const tagsWrap = content.querySelector('.pd-tags');
   (c.tags || []).forEach(t => {
@@ -1663,8 +2184,18 @@ function openProfileModal(cid) {
     ts.textContent = t;
     tagsWrap.appendChild(ts);
   });
-  
+
   openOverlay('profile-modal');
+}
+
+// Helper: format timestamp as relative time
+function _timeAgo(ts) {
+  if (!ts) return 'just now';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
 }
 
 function toggleDetention(cid) {
@@ -1942,6 +2473,33 @@ function chatSend() {
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
   if (!text || !_activeChatRoom) return;
+
+  // ── Relationship processing ───────────────────────────────────
+  if (typeof Relationships !== 'undefined') {
+    // Determine which characters are in this room
+    const roomMembers = HOMEROOM_IDS.includes(_activeChatRoom)
+      ? (homerooms[_activeChatRoom] || [])
+      : Object.keys(characters).filter(cid => locations[cid] === _activeChatRoom && !detention[cid]);
+
+    roomMembers.forEach((cid, idx) => {
+      if (detention[cid]) return;
+      // Direct target (first character, or whichever is "addressed") gets full delta
+      // Others get 35% ambient effect
+      const multiplier = idx === 0 ? 1.0 : 0.35;
+      const result = Relationships.processMessage(cid, text, multiplier);
+
+      // Show level-up toast if relationship tier changed
+      if (result && result.levelUp) {
+        const charName = characters[cid]?.name || cid;
+        const t = document.createElement('div');
+        t.className = 'toast toast-levelup';
+        t.textContent = `✨ ${charName}: ${result.newLevel}`;
+        document.body.appendChild(t);
+        setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 3500);
+      }
+    });
+  }
+
   if (typeof ChatEngine !== 'undefined') {
     ChatEngine.sendMessage(_activeChatRoom, text);
   }
