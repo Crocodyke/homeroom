@@ -1943,19 +1943,17 @@ async function testNAIKey() {
   if (status) { status.textContent = 'Testing connection…'; status.style.color = 'var(--muted)'; }
   if (corsWarn) corsWarn.style.display = 'none';
 
-  const ok = await NovelAIEngine.testConnection();
+  const result = await NovelAIEngine.testConnection();
 
   if (btn)    { btn.textContent = 'TEST'; btn.disabled = false; }
   if (status) {
-    if (ok) {
-      status.textContent = '✓ Connected — Kayra is ready.';
+    if (result.ok) {
+      status.textContent = '✓ Connected — Erato is ready.';
       status.style.color = 'var(--green)';
     } else {
-      // Detect whether the failure is likely a CORS block (no response body)
-      const likelyCORS = window.location.protocol === 'file:';
-      status.textContent = '✗ Connection failed. Check your key and try again.';
+      status.textContent = `✗ ${result.message || 'Connection failed.'}`;
       status.style.color = 'var(--accent)';
-      if (likelyCORS && corsWarn) corsWarn.style.display = 'block';
+      if (window.location.protocol === 'file:' && corsWarn) corsWarn.style.display = 'block';
     }
   }
   showToast(ok ? 'NAI connection verified.' : 'NAI connection failed.');
