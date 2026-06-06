@@ -518,6 +518,115 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--ink);color:var(--ink
 .cd-chat-btn:hover{background:rgba(201,153,42,.1);border-color:var(--gold);}
 .cd-chat-btn.active{background:rgba(201,153,42,.15);border-color:var(--gold);}
 
+  /* ── CLASS DETAIL & SEATING OVERHAUL ── */
+
+.seating-area {
+    background: #e8e4d8;
+    border: 3px solid #8b5a2b;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: inset 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.teacher-desk-bar {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.teacher-desk {
+    background: #1c2a1c;
+    color: #e8e2d3;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 13px;
+    letter-spacing: .35em;
+    padding: 10px 32px;
+    border-radius: 4px;
+    border: 2px solid var(--gold);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+}
+
+.seats-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+    padding: 10px;
+    background: #d9d2bd;
+    border-radius: 6px;
+    border: 2px solid #8b5a2b;
+}
+
+.seat {
+    width: 92px;
+    height: 112px;
+    border-radius: 8px;
+    border: 2.5px solid rgba(139, 90, 43, 0.6);
+    background: #fffef7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+}
+
+.seat:hover {
+    border-color: var(--accent);
+    transform: translateY(-6px) rotate(1.5deg) scale(1.04);
+    box-shadow: 0 12px 20px rgba(197, 48, 48, 0.25);
+    z-index: 10;
+}
+
+.seat img {
+    width: 58px;
+    height: 58px;
+    object-fit: cover;
+    border: 3px solid #c9992a;
+    border-radius: 50%;
+    margin-bottom: 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+
+.seat-name {
+    font-family: 'Special Elite', serif;
+    font-size: 9.5px;
+    color: #3c2f2f;
+    text-align: center;
+    line-height: 1.2;
+    padding: 0 4px;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Highlight player's seat */
+.seat.player-seat {
+    border-color: var(--gold);
+    background: #f8f4e8;
+}
+
+.seat.player-seat::after {
+    content: "★ YOU";
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: var(--gold);
+    color: #3c2f2f;
+    font-size: 8px;
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: .5px;
+}
+
+/* Empty seat style (future) */
+.seat.empty {
+    border-style: dashed;
+    opacity: 0.6;
+}
 </style>
 
 <script>
@@ -1774,45 +1883,64 @@ function renderClasses() {
 }
 
 function viewClassDetail(id) {
-  currentView = 'classdetail';
-  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
-  document.getElementById('view-classdetail').classList.add('active');
+    currentView = 'classdetail';
+    document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+    document.getElementById('view-classdetail').classList.add('active');
 
-  const state = getScheduleState();
-  const periodIdx = state.inClass && state.period ? state.period.n - 1 : 0;
-  const subject = getRoomSubject(id, periodIdx);
-  const subjectDisplay = state.inClass ? subject : 'No Class in Session';
+    const state = getScheduleState();
+    const periodIdx = state.inClass && state.period ? state.period.n - 1 : 0;
+    const subject = getRoomSubject(id, periodIdx);
+    const subjectDisplay = state.inClass ? subject : 'No Class in Session';
 
-  const wrap = document.getElementById('cd-wrap');
-  wrap.innerHTML = `
-    <div class="cd-back" onclick="showView('classes')">← Back to Homerooms</div>
-    <div class="cd-header">
-      <div>
-        <div class="cd-title" style="color:${HOMEROOM_COLORS[id]}">Room ${id}</div>
-        <div class="cd-info">${subjectDisplay} · Instructor: ${EMBEDDED_DB.meta.classes[id]?.teacher || 'TBA'}</div>
-      </div>
-      <button class="cd-chat-btn" id="cd-chat-btn" onclick="toggleChatPanel('${id}')">
-        <span class="chat-dot"></span> ROOM CHAT
-      </button>
-    </div>
-    <div class="seating-area">
-      <div class="teacher-desk-bar"><div class="teacher-desk">${subjectDisplay.toUpperCase()}</div></div>
-      <div class="seats-grid" id="seats-grid"></div>
-    </div>
-  `;
+    const wrap = document.getElementById('cd-wrap');
+    wrap.innerHTML = `
+        <div class="cd-back" onclick="showView('classes')">← Back to Homerooms</div>
+        <div class="cd-header">
+            <div>
+                <div class="cd-title" style="color:${HOMEROOM_COLORS[id]}">Room ${id}</div>
+                <div class="cd-info">${subjectDisplay} · Instructor: ${EMBEDDED_DB.meta.classes[id]?.teacher || 'TBA'}</div>
+            </div>
+            <button class="cd-chat-btn" id="cd-chat-btn" onclick="toggleChatPanel('${id}')">
+                <span class="chat-dot"></span> ROOM CHAT
+            </button>
+        </div>
+        <div class="seating-area">
+            <div class="teacher-desk-bar">
+                <div class="teacher-desk">${subjectDisplay.toUpperCase()} — ${state.inClass ? 'IN SESSION' : 'RECESS'}</div>
+            </div>
+            <div class="seats-grid" id="seats-grid"></div>
+        </div>
+    `;
 
-  const sGrid = document.getElementById('seats-grid');
-  (homerooms[id] || []).forEach(cid => {
-    const seat = document.createElement('div');
-    seat.className = 'seat';
-    seat.appendChild(makeAv(cid, 42));
-    const name = document.createElement('div');
-    name.className = 'seat-name';
-    name.textContent = characters[cid]?.name || cid;
-    seat.appendChild(name);
-    seat.onclick = () => openProfileModal(cid);
-    sGrid.appendChild(seat);
-  });
+    const sGrid = document.getElementById('seats-grid');
+    const students = homerooms[id] || [];
+    
+    students.forEach(cid => {
+        const seat = document.createElement('div');
+        seat.className = 'seat';
+        if (cid === player.id) seat.classList.add('player-seat');   // Highlight player
+
+        seat.appendChild(makeAv(cid, 58));   // Slightly larger avatars
+
+        const name = document.createElement('div');
+        name.className = 'seat-name';
+        name.textContent = characters[cid]?.name || cid;
+        seat.appendChild(name);
+
+        seat.onclick = () => openProfileModal(cid);
+        sGrid.appendChild(seat);
+    });
+
+    // Optional: Add a few "empty desk" placeholders for realism
+    if (students.length < 18) {
+        for (let i = students.length; i < 20; i++) {
+            const empty = document.createElement('div');
+            empty.className = 'seat empty';
+            empty.innerHTML = `<div style="width:58px;height:58px;border:3px dashed #aaa;border-radius:50%;margin-bottom:6px;"></div>
+                               <div class="seat-name" style="color:#aaa;">Empty Desk</div>`;
+            sGrid.appendChild(empty);
+        }
+    }
 }
 
 function viewZoneDetail(zoneId, zoneName, zoneEmoji) {
