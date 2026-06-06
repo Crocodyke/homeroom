@@ -973,7 +973,6 @@ const Relationships = (() => {
     <button class="tb-btn" id="nav-cafe"      onclick="showView('cafe')">🍱 CAFETERIA</button>
     <button class="tb-btn" id="nav-hangout"   onclick="showView('hangout')">🏪 HANGOUTS</button>
     <button class="tb-btn" id="nav-roster"    onclick="showView('roster')">👥 ROSTER</button>
-    <button class="tb-btn" id="nav-detention" onclick="showView('detention')">🚨 DETENTION</button>
     <button class="tb-btn" id="nav-settings"  onclick="showView('settings')">⚙ YOU</button>
   </div>
 
@@ -1166,13 +1165,33 @@ function getScheduleState() {
   };
 }
 
-// Assign a unique subject to each room for a given period index
-// Player's room always gets SUBJECTS[0]; others get different ones in rotation
+// Assign a unique subject to each room for a given period index.
+// Subjects rotate daily: each new calendar day gets a different shuffle,
+// but every class always has a DIFFERENT subject per period.
+function _getDailySeed() {
+  const d = new Date();
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+
+function _seededShuffle(arr, seed) {
+  // Simple deterministic Fisher-Yates using a linear-congruential seed
+  const a = arr.slice();
+  let s = seed;
+  for (let i = a.length - 1; i > 0; i--) {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    const j = Math.abs(s) % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 function getRoomSubject(roomId, periodIdx) {
-  const playerRoom = player.homeroom || '2B';
-  const orderedRooms = [playerRoom, ...HOMEROOM_IDS.filter(r => r !== playerRoom)];
-  const roomPos = orderedRooms.indexOf(roomId);
-  return SUBJECTS[(periodIdx + roomPos) % SUBJECTS.length];
+  const seed = _getDailySeed();
+  // Each room gets a different daily offset so classes never share a subject in the same period
+  const roomOffset = HOMEROOM_IDS.indexOf(roomId);
+  // Shuffle subjects once per day then pick by (periodIdx + roomOffset) so every room differs
+  const dailySubjects = _seededShuffle(SUBJECTS, seed + roomOffset * 31337);
+  return dailySubjects[periodIdx % dailySubjects.length];
 }
 
 const CAMPUS_ZONES = [
@@ -1573,11 +1592,22 @@ function enterApp() {
     player.homeroom = ccHomeroom;
     persist();
   }
+  // Stop any running clock so initApp restarts it fresh with current real-world time
+  SchoolClock.stop();
   document.getElementById('splash').classList.add('out');
   setTimeout(() => {
     document.getElementById('splash').style.display = 'none';
     document.getElementById('app').classList.add('active');
     initApp();
+    // Force an immediate clock tick so topbar shows correct time/day/period
+    const s = SchoolClock.getState();
+    const tbTime   = document.getElementById('tb-time');
+    const tbPeriod = document.getElementById('tb-period');
+    if (tbTime)   tbTime.textContent   = s.time;
+    if (tbPeriod) tbPeriod.textContent = s.phaseLabel;
+    // Also re-place students since day/weekend status is now accurate
+    placeAllStudents();
+    renderCurrentView();
   }, 400);
 }
 
@@ -1851,32 +1881,39 @@ function renderCafe() {
   }
 
   // Assign seats: deal out pool across 6 tables, max 6 per table, no duplicates
+  // Fill order per table: 1L, 1R, 2L, 2R, 3L, 3R (slot indices 0,3,1,4,2,5)
   const MAX_SEATS = 6;
+  const SEAT_ORDER = [0, 3, 1, 4, 2, 5]; // interleaved left/right
   const seated = new Set();
-  const tableOccupants = CAFE_TABLES.map(() => []);
+  const tableSlots = CAFE_TABLES.map(() => [null, null, null, null, null, null]);
   let poolIdx = 0;
   for (let round = 0; round < MAX_SEATS; round++) {
+    const slotIdx = SEAT_ORDER[round];
     for (let t = 0; t < CAFE_TABLES.length; t++) {
       while (poolIdx < cafePool.length && seated.has(cafePool[poolIdx])) poolIdx++;
       if (poolIdx >= cafePool.length) break;
-      tableOccupants[t].push(cafePool[poolIdx]);
+      tableSlots[t][slotIdx] = cafePool[poolIdx];
       seated.add(cafePool[poolIdx]);
       poolIdx++;
     }
   }
+  const tableOccupants = tableSlots.map(slots => slots.filter(Boolean));
 
   CAFE_TABLES.forEach((t, tIdx) => {
-    const occupants = tableOccupants[tIdx];
+    // slots: 6-element array where null = empty seat
+    // Left column = indices 0,1,2 | Right column = indices 3,4,5
+    const slots    = tableSlots[tIdx];
+    const occupants = tableOccupants[tIdx]; // filtered non-null, for count display
     const isActive = _activeChatRoom === t.id;
 
     const card = document.createElement('div');
     card.className = 'table-card' + (isActive ? ' chat-active' : '');
 
-    // Left seat column (seats 0,1,2)
+    // Left seat column (slot indices 0,1,2)
     const leftCol = document.createElement('div');
     leftCol.className = 't-seats-col';
     for (let i = 0; i < 3; i++) {
-      leftCol.appendChild(_makeCafeSeat(occupants[i]));
+      leftCol.appendChild(_makeCafeSeat(slots[i]));
     }
 
     // Center surface
@@ -1893,11 +1930,11 @@ function renderCafe() {
     `;
     surface.appendChild(chatIconBtn);
 
-    // Right seat column (seats 3,4,5)
+    // Right seat column (slot indices 3,4,5)
     const rightCol = document.createElement('div');
     rightCol.className = 't-seats-col';
     for (let i = 3; i < 6; i++) {
-      rightCol.appendChild(_makeCafeSeat(occupants[i]));
+      rightCol.appendChild(_makeCafeSeat(slots[i]));
     }
 
     card.appendChild(leftCol);
@@ -2154,7 +2191,7 @@ function openProfileModal(cid) {
   }
 
   content.innerHTML = `
-    <div class="m-title">Student Tracking Record</div>
+    <div class="m-title">Student Profile</div>
     <div class="pd-hero">
       <div id="modal-av-placeholder"></div>
       <div>
@@ -2163,16 +2200,15 @@ function openProfileModal(cid) {
         <div class="pd-tags"></div>
       </div>
     </div>
+    ${relHtml}
     <div class="pd-section">
-      <div class="pd-sect-title">Behavioral Summary & Diagnostics</div>
+      <div class="pd-sect-title">Summary</div>
       <div style="font-family:'Special Elite',serif; font-size:11px; color:var(--muted); line-height:1.6;">
         ${buildProfileBlurb(c)}
       </div>
     </div>
-    ${relHtml}
     <div class="pd-actions">
-      <button class="pd-act-btn" onclick="toggleDetention('${cid}')">${detention[cid] ? 'Clear Profile' : 'Flag Disciplinary Actions'}</button>
-      <button class="pd-act-btn" onclick="closeOverlay('profile-modal')">Close Window</button>
+      <button class="pd-act-btn" onclick="closeOverlay('profile-modal')">Close</button>
     </div>
   `;
 
@@ -2212,7 +2248,42 @@ function toggleDetention(cid) {
 }
 
 function loadClass2B() {
-  showToast('Class 2B roster alignment complete.');
+  // Reset characters and homerooms to the full embedded DB (all 109 students)
+  characters = {};
+  homerooms  = {};
+  popularity = {};
+
+  EMBEDDED_DB.characters.forEach(c => {
+    characters[c.id] = { ...c, runtimeId: c.id };
+    popularity[c.id] = Math.floor(Math.random() * 30) + 50;
+  });
+
+  HOMEROOM_IDS.forEach(roomId => {
+    const classDef = EMBEDDED_DB.meta.classes[roomId];
+    homerooms[roomId] = classDef?.students?.filter(sid => characters[sid]) || [];
+  });
+
+  // Overflow: any character not in a room gets distributed
+  const assigned = new Set(HOMEROOM_IDS.flatMap(id => homerooms[id]));
+  Object.keys(characters).forEach((cid, idx) => {
+    if (!assigned.has(cid)) {
+      const fallback = HOMEROOM_IDS[idx % HOMEROOM_IDS.length];
+      homerooms[fallback].push(cid);
+    }
+  });
+
+  // Re-seed relationships for new characters
+  if (typeof Relationships !== 'undefined') {
+    Relationships.init(characters);
+  }
+
+  persist();
+  placeAllStudents();
+  renderCurrentView();
+
+  const total = Object.keys(characters).length;
+  document.getElementById('s-db-count').textContent = `${total} active database characters synced`;
+  showToast(`Full roster loaded — ${total} students across all classes.`);
 }
 
 // ═══════════════════════════════════════════════════════
