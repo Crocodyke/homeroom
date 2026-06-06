@@ -331,23 +331,95 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--ink);color:var(--ink
 .chat-log::-webkit-scrollbar{width:4px;}
 .chat-log::-webkit-scrollbar-track{background:transparent;}
 .chat-log::-webkit-scrollbar-thumb{background:rgba(201,153,42,.2);border-radius:2px;}
-.cm{padding:5px 12px;display:flex;flex-direction:column;gap:2px;animation:fadeUp .2s both;}
+/* ── CHAT MESSAGES ── */
+.cm{padding:4px 12px;display:flex;flex-direction:column;gap:3px;animation:fadeUp .2s both;}
+
+/* System messages */
 .cm-system{padding:4px 12px;text-align:center;}
 .cm-system .cm-text{font-family:'Special Elite',serif;font-size:9.5px;color:rgba(232,226,211,.22);letter-spacing:.08em;font-style:italic;}
-.cm-activity .cm-speaker,.cm-reaction .cm-speaker{
-  font-family:'Bebas Neue',sans-serif;font-size:10px;letter-spacing:.15em;
-  color:rgba(201,153,42,.55);display:flex;align-items:center;gap:5px;
+
+/* ── PLAYER message — right aligned, solid red box ── */
+.cm-player{
+  align-items:flex-end;
+  flex-direction:row;
+  justify-content:flex-end;
+  gap:8px;
+  padding:6px 12px;
 }
-.cm-activity .cm-text{font-family:'Special Elite',serif;font-size:11.5px;color:rgba(232,226,211,.62);line-height:1.5;padding-left:2px;font-style:italic;}
-.cm-reaction .cm-text{font-family:'Special Elite',serif;font-size:10.5px;color:rgba(232,226,211,.38);line-height:1.45;padding-left:2px;font-style:italic;}
-.cm-reaction .cm-speaker{color:rgba(150,130,100,.45);font-size:9px;}
-.cm-player{align-items:flex-end;flex-direction:row;justify-content:flex-end;gap:6px;}
-.cm-player .cm-bubble{
-  background:rgba(197,48,48,.18);border:1px solid rgba(197,48,48,.25);
-  color:rgba(232,226,211,.85);font-family:'DM Mono',monospace;font-size:11px;
-  padding:6px 9px;border-radius:3px 3px 0 3px;max-width:200px;line-height:1.45;
+.cm-player-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:3px;}
+.cm-player-bubble{
+  background:#7b1a1a;
+  color:#fff;
+  font-family:'DM Mono',monospace;font-size:12px;
+  padding:7px 11px;border-radius:4px 4px 0 4px;
+  max-width:220px;line-height:1.5;
+  box-shadow:0 2px 8px rgba(0,0,0,.35);
 }
-.cm-player .cm-speaker{font-family:'Special Elite',serif;font-size:9px;color:rgba(197,48,48,.4);letter-spacing:.08em;}
+.cm-player-name{
+  font-family:'Bebas Neue',sans-serif;font-size:10px;letter-spacing:.18em;
+  color:rgba(197,80,80,.6);
+}
+.cm-player-av{
+  width:32px;height:32px;border-radius:50%;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;flex-shrink:0;
+  border:2px solid rgba(197,48,48,.5);
+  background:rgba(197,48,48,.15);
+  align-self:flex-end;
+}
+.cm-player-av img{width:100%;height:100%;object-fit:cover;}
+
+/* ── CHARACTER message — left aligned, action + colored dialogue box ── */
+.cm-char{
+  align-items:flex-start;
+  flex-direction:row;
+  gap:8px;
+  padding:6px 12px;
+}
+.cm-char-av{
+  width:28px;height:28px;border-radius:50%;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;flex-shrink:0;
+  border:1.5px solid rgba(255,255,255,.15);
+  background:rgba(255,255,255,.07);
+  align-self:flex-start;margin-top:2px;
+}
+.cm-char-av img{width:100%;height:100%;object-fit:cover;}
+.cm-char-body{display:flex;flex-direction:column;gap:4px;max-width:240px;}
+.cm-char-name{
+  font-family:'Bebas Neue',sans-serif;font-size:10px;letter-spacing:.18em;
+  color:rgba(232,226,211,.45);
+}
+/* Action text — plain italic, no box */
+.cm-char-action{
+  font-family:'Special Elite',serif;font-size:11.5px;
+  color:rgba(232,226,211,.55);font-style:italic;line-height:1.5;
+}
+/* Dialogue box — character color, white text */
+.cm-char-dialog{
+  color:#fff;
+  font-family:'Special Elite',serif;font-size:12px;
+  padding:7px 11px;border-radius:4px 4px 4px 0;
+  line-height:1.5;
+  box-shadow:0 2px 8px rgba(0,0,0,.35);
+}
+
+/* ── ACTIVITY / REACTION — ambient, no box ── */
+.cm-activity,.cm-reaction{padding:3px 12px;}
+.cm-activity-inner,.cm-reaction-inner{
+  display:flex;align-items:center;gap:6px;
+}
+.cm-ambient-av{
+  width:16px;height:16px;border-radius:50%;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  font-size:8px;flex-shrink:0;opacity:.6;
+}
+.cm-ambient-av img{width:100%;height:100%;object-fit:cover;}
+.cm-ambient-text{
+  font-family:'Special Elite',serif;font-size:11px;
+  color:rgba(232,226,211,.45);font-style:italic;line-height:1.45;
+}
+
 .cm-av{width:18px;height:18px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:9px;background:var(--cream);flex-shrink:0;}
 .cm-av img{width:100%;height:100%;object-fit:cover;}
 .chat-divider{height:1px;background:rgba(255,255,255,.05);margin:4px 12px;}
@@ -1733,57 +1805,132 @@ function renderChatLog(log) {
     const row = document.createElement('div');
 
     if (msg.type === 'system') {
+      // ── System message ───────────────────────────────────────────
       row.className = 'cm cm-system';
-      row.innerHTML = `<span class="cm-text">${msg.text}</span>`;
+      row.innerHTML = `<span class="cm-text">${_escHtml(msg.text)}</span>`;
 
     } else if (msg.type === 'player') {
+      // ── Player message — right-aligned solid red box ─────────────
       row.className = 'cm cm-player';
-      const playerAvEl = makeAv('__player__', 28, 'rgba(197,48,48,.2)', '🧑‍🎓');
-      playerAvEl.style.cssText = 'width:28px;height:28px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;border:1px solid rgba(197,48,48,.3);';
-      const playerTextWrap = document.createElement('div');
-      playerTextWrap.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;gap:2px;';
-      const bubbleEl = document.createElement('div');
-      bubbleEl.className = 'cm-bubble';
-      bubbleEl.textContent = msg.text;
-      const nameEl = document.createElement('div');
-      nameEl.className = 'cm-speaker';
-      nameEl.textContent = msg.speakerName;
-      playerTextWrap.appendChild(bubbleEl);
-      playerTextWrap.appendChild(nameEl);
-      row.appendChild(playerTextWrap);
-      row.appendChild(playerAvEl);
 
-    } else {
+      const avEl = document.createElement('div');
+      avEl.className = 'cm-player-av';
+      avEl.textContent = '🧑‍🎓';
+
+      const wrap = document.createElement('div');
+      wrap.className = 'cm-player-wrap';
+
+      const bubble = document.createElement('div');
+      bubble.className = 'cm-player-bubble';
+      bubble.textContent = msg.text;
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'cm-player-name';
+      nameEl.textContent = msg.speakerName.toUpperCase();
+
+      wrap.appendChild(bubble);
+      wrap.appendChild(nameEl);
+      row.appendChild(wrap);
+      row.appendChild(avEl);
+
+    } else if (msg.type === 'activity' || msg.type === 'reaction') {
+      // ── Ambient activity / reaction — no box, just italic text ───
       row.className = `cm cm-${msg.type}`;
       const c = characters[msg.speakerId];
-      const color = c?.color || 'var(--gold)';
 
-      // Build tiny avatar
+      const inner = document.createElement('div');
+      inner.className = `cm-${msg.type}-inner`;
+
       const avWrap = document.createElement('div');
-      avWrap.className = 'cm-av';
+      avWrap.className = 'cm-ambient-av';
       if (c) {
-        const avEl = makeAv(msg.speakerId, 18);
-        avEl.style.cssText = 'width:18px;height:18px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0;';
+        const avEl = makeAv(msg.speakerId, 16);
+        avEl.style.cssText = 'width:16px;height:16px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0;';
         avWrap.appendChild(avEl);
       } else {
         avWrap.textContent = '👤';
       }
 
-      const speakerDiv = document.createElement('div');
-      speakerDiv.className = 'cm-speaker';
-      speakerDiv.style.color = color;
-      speakerDiv.appendChild(avWrap);
-      speakerDiv.appendChild(document.createTextNode(msg.speakerName.toUpperCase()));
-
-      const textDiv = document.createElement('div');
-      textDiv.className = 'cm-text';
-      // Activity: "Name is [text]" / Reaction: "Name [text]"
-      textDiv.textContent = msg.type === 'activity'
+      const textEl = document.createElement('div');
+      textEl.className = 'cm-ambient-text';
+      textEl.textContent = msg.type === 'activity'
         ? `${msg.speakerName} is ${msg.text}`
         : `${msg.speakerName} ${msg.text}`;
 
-      row.appendChild(speakerDiv);
-      row.appendChild(textDiv);
+      inner.appendChild(avWrap);
+      inner.appendChild(textEl);
+      row.appendChild(inner);
+
+    } else {
+      // ── Character reply — avatar + name + action (italic) + dialog box ──
+      row.className = 'cm cm-char';
+      const c = characters[msg.speakerId];
+      const color = c?.color || '#c9992a';
+
+      // Avatar
+      const avWrap = document.createElement('div');
+      avWrap.className = 'cm-char-av';
+      avWrap.style.borderColor = color + '66';
+      if (c) {
+        const avEl = makeAv(msg.speakerId, 28);
+        avEl.style.cssText = 'width:28px;height:28px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;';
+        avWrap.appendChild(avEl);
+      } else {
+        avWrap.textContent = '👤';
+      }
+
+      // Body column
+      const body = document.createElement('div');
+      body.className = 'cm-char-body';
+
+      // Name
+      const nameEl = document.createElement('div');
+      nameEl.className = 'cm-char-name';
+      nameEl.style.color = color;
+      nameEl.textContent = msg.speakerName.toUpperCase();
+      body.appendChild(nameEl);
+
+      // Parse *action* and "dialog" from text
+      const actionMatch = msg.text.match(/^\*([^*]+)\*/);
+      const dialogMatch = msg.text.match(/[""""]([^"""]+)[""""]/s) ||
+                          msg.text.match(/^\*[^*]+\*\s*(.+)$/s);
+
+      const actionText = actionMatch ? actionMatch[1].trim() : null;
+      // dialog is everything after the action beat, stripped of quotes
+      let dialogText = null;
+      const afterAction = actionMatch
+        ? msg.text.slice(actionMatch[0].length).trim()
+        : msg.text.trim();
+      if (afterAction) {
+        dialogText = afterAction.replace(/^["""]+|["""]+$/g, '').trim();
+      }
+
+      if (actionText) {
+        const actionEl = document.createElement('div');
+        actionEl.className = 'cm-char-action';
+        actionEl.textContent = `*${actionText}*`;
+        body.appendChild(actionEl);
+      }
+
+      if (dialogText) {
+        const dialogEl = document.createElement('div');
+        dialogEl.className = 'cm-char-dialog';
+        dialogEl.style.background = color + '33';
+        dialogEl.style.borderLeft = `3px solid ${color}`;
+        dialogEl.textContent = `"${dialogText}"`;
+        body.appendChild(dialogEl);
+      }
+
+      // If neither parsed cleanly, just show raw text as action
+      if (!actionText && !dialogText) {
+        const fallback = document.createElement('div');
+        fallback.className = 'cm-char-action';
+        fallback.textContent = msg.text;
+        body.appendChild(fallback);
+      }
+
+      row.appendChild(avWrap);
+      row.appendChild(body);
     }
 
     // Divider before system messages (except first)
