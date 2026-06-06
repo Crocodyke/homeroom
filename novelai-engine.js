@@ -232,37 +232,63 @@ ${c.name} `
   }
 
   // ── Public: testConnection ───────────────────────────────────────
+  // Returns { ok: bool, status: number|null, message: string }
   async function testConnection() {
     const key = getKey();
-    if (!key) return false;
+    if (!key) return { ok: false, status: null, message: 'No key entered.' };
+
+    const endpoint = getProxy() || NAI_ENDPOINT;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+    let res;
     try {
-      const endpoint = getProxy() || NAI_ENDPOINT;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-      let res;
-      try {
-        res = await fetch(endpoint, {
-          method:  'POST',
-          headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${key}`,
+      res = await fetch(endpoint, {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          input: 'Hello',
+          model: MODEL,
+          parameters: {
+            max_length:   5,
+            min_length:   1,
+            temperature:  1,
+            top_p:        0.95,
+            top_k:        0,
+            use_cache:    false,
+            return_full_text: false,
           },
-          body: JSON.stringify({
-            input:      'Hello',
-            model:      MODEL,
-            parameters: { max_length: 5 },
-          }),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timer);
-      }
-
-      return res.ok;
-    } catch {
-      return false;
+        }),
+        signal: controller.signal,
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      const msg = e.name === 'AbortError' ? 'Request timed out.' : `Network error: ${e.message}`;
+      console.warn('[NovelAIEngine] testConnection error:', msg);
+      return { ok: false, status: null, message: msg };
     }
+    clearTimeout(timer);
+
+    if (res.ok) {
+      // Drain the stream so the connection closes cleanly
+      await _readStream(res).catch(() => {});
+      return { ok: true, status: res.status, message: 'Connected.' };
+    }
+
+    // Try to read the error body for a useful message
+    const body = await res.text().catch(() => '');
+    let hint = '';
+    if (res.status === 401) hint = 'Invalid or expired key.';
+    else if (res.status === 402) hint = 'Subscription required / out of Anlas.';
+    else if (res.status === 400) hint = `Bad request — API rejected the payload. ${body}`;
+    else if (res.status === 429) hint = 'Rate limited — wait a moment and try again.';
+    else hint = body || 'Unknown error.';
+
+    console.warn(`[NovelAIEngine] testConnection failed: HTTP ${res.status}`, hint);
+    return { ok: false, status: res.status, message: hint };
   }
 
   // ── Public API ───────────────────────────────────────────────────
