@@ -377,39 +377,9 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--ink);color:var(--ink
 }
 .cd-chat-btn:hover{background:rgba(201,153,42,.1);border-color:var(--gold);}
 .cd-chat-btn.active{background:rgba(201,153,42,.15);border-color:var(--gold);}
-/* NAI reply — in-character response to player, bubble style */
-.cm-nai-reply{align-items:flex-start;}
-.cm-nai-reply .cm-speaker{
-  font-family:'Bebas Neue',sans-serif;font-size:10px;letter-spacing:.15em;
-  color:var(--nai-color,rgba(201,153,42,.8));display:flex;align-items:center;gap:5px;
-  margin-bottom:2px;
-}
-.cm-nai-reply .cm-bubble{
-  background:var(--nai-bg,rgba(201,153,42,.14));
-  border:1px solid var(--nai-border,rgba(201,153,42,.3));
-  color:rgba(232,226,211,.92);
-  font-family:'Special Elite',serif;font-size:12px;
-  padding:7px 10px;border-radius:3px 3px 3px 0;
-  max-width:240px;line-height:1.55;
-}
-.cm-nai-reply .cm-bubble em{
-  font-style:italic;color:rgba(232,226,211,.55);font-size:11px;
-}
-.nai-thinking{
-  display:flex;align-items:center;gap:6px;padding:5px 12px;
-  font-family:'Special Elite',serif;font-size:10px;
-  color:rgba(201,153,42,.4);letter-spacing:.06em;font-style:italic;
-  animation:fadeUp .2s both;
-}
-.nai-thinking-dots span{
-  display:inline-block;width:4px;height:4px;border-radius:50%;
-  background:rgba(201,153,42,.4);margin:0 1px;
-  animation:pulse 1.2s infinite;
-}
-.nai-thinking-dots span:nth-child(2){animation-delay:.2s;}
-.nai-thinking-dots span:nth-child(3){animation-delay:.4s;}
+
 </style>
-<script src="novelai-engine.js"></script>
+
 <script src="chat-engine.js"></script>
 </head>
 <body>
@@ -623,29 +593,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--ink);color:var(--ink
           <div id="assign-area"></div>
         </div>
 
-        <div class="s-section">
-          <div class="s-sect-title">NovelAI Integration</div>
-          <div class="s-row">
-            <div class="s-label">API Key</div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <input class="s-input" id="s-nai-key" type="password" placeholder="Paste your NAI token here…" style="flex:1;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.04em;">
-              <button class="s-btn primary" onclick="testNAIKey()" style="width:auto;padding:10px 14px;white-space:nowrap;font-size:12px;" id="nai-test-btn">TEST</button>
-            </div>
-            <div id="nai-status" style="font-family:'Special Elite',serif;font-size:10px;margin-top:6px;color:var(--muted);letter-spacing:.06em;min-height:14px;"></div>
-          </div>
-          <div style="font-family:'Special Elite',serif;font-size:10px;color:var(--muted);line-height:1.6;margin-top:4px;">
-            When a key is present, characters reply in-character via Kayra when you send a message. Idle events always use the built-in engine. Your key is stored locally and never transmitted except to NovelAI.
-          </div>
-          <div id="nai-cors-warning" style="display:none;font-family:'Special Elite',serif;font-size:10px;color:#c0392b;line-height:1.6;margin-top:6px;padding:6px 8px;border:1px solid rgba(192,57,43,.4);border-radius:3px;background:rgba(192,57,43,.08);">
-            &#9888; <strong>CORS blocked.</strong> Browsers cannot call api.novelai.net directly from a local file.
-            Serve this page via a local web server (e.g. <code style="font-size:10px;">npx serve .</code>) or enter a proxy URL below.
-          </div>
-          <div class="s-row" style="margin-top:8px;">
-            <div class="s-label">Proxy URL <span style="font-size:9px;opacity:.6;">(optional)</span></div>
-            <input class="s-input" id="s-nai-proxy" type="text" placeholder="http://localhost:5001/proxy  (leave blank if served over HTTPS)" style="font-family:'DM Mono',monospace;font-size:11px;">
-          </div>
-          <button class="s-btn primary" onclick="saveNAIKey()" style="margin-top:10px;">Save Key</button>
-        </div>
+
 
 
           <div class="s-danger-zone">
@@ -1551,23 +1499,6 @@ function renderSettings() {
     if (b.textContent.toLowerCase().includes(player.gender)) b.classList.add('sel');
   });
 
-  // Populate NAI key + proxy fields
-  const keyField = document.getElementById('s-nai-key');
-  const proxyField = document.getElementById('s-nai-proxy');
-  if (proxyField && typeof NovelAIEngine !== 'undefined') {
-    proxyField.value = NovelAIEngine.getProxy() || '';
-  }
-  if (keyField && typeof NovelAIEngine !== 'undefined') {
-    const stored = NovelAIEngine.getKey();
-    keyField.value = stored || '';
-    const status = document.getElementById('nai-status');
-    if (status) {
-      status.textContent = stored
-        ? '✓ Key loaded — characters will reply via Kayra.'
-        : 'No key set — idle engine only.';
-      status.style.color = stored ? 'var(--green)' : 'var(--muted)';
-    }
-  }
 
   const area = document.getElementById('assign-area');
   area.innerHTML = '';
@@ -1822,44 +1753,6 @@ function renderChatLog(log) {
       row.appendChild(playerTextWrap);
       row.appendChild(playerAvEl);
 
-    } else if (msg.type === 'nai-reply') {
-      // In-character NAI response — colored bubble, left-aligned
-      row.className = 'cm cm-nai-reply';
-      const c = characters[msg.speakerId];
-      const rawColor = c?.color || '#c9992a';
-
-      // Set CSS custom properties via setProperty (cssText drops custom props in some browsers)
-      row.style.setProperty('--nai-color', rawColor);
-      row.style.setProperty('--nai-bg',    rawColor + '22');
-      row.style.setProperty('--nai-border', rawColor + '55');
-
-      const avWrap = document.createElement('div');
-      avWrap.className = 'cm-av';
-      if (c) {
-        const avEl = makeAv(msg.speakerId, 18);
-        avEl.style.cssText = 'width:18px;height:18px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0;';
-        avWrap.appendChild(avEl);
-      } else {
-        avWrap.textContent = '👤';
-      }
-
-      const speakerDiv = document.createElement('div');
-      speakerDiv.className = 'cm-speaker';
-      speakerDiv.appendChild(avWrap);
-      speakerDiv.appendChild(document.createTextNode(msg.speakerName.toUpperCase()));
-
-      const bubble = document.createElement('div');
-      bubble.className = 'cm-bubble';
-      // Apply color directly as inline styles too — belt and suspenders for the bg/border
-      bubble.style.background = rawColor + '22';
-      bubble.style.borderColor = rawColor + '66';
-      let displayHtml = _escHtml(msg.text);
-      displayHtml = displayHtml.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-      bubble.innerHTML = displayHtml;
-
-      row.appendChild(speakerDiv);
-      row.appendChild(bubble);
-
     } else {
       row.className = `cm cm-${msg.type}`;
       const c = characters[msg.speakerId];
@@ -1908,55 +1801,6 @@ function renderChatLog(log) {
 
 function _escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function saveNAIKey() {
-  const val   = document.getElementById('s-nai-key')?.value.trim();
-  const proxy = document.getElementById('s-nai-proxy')?.value.trim();
-  if (typeof NovelAIEngine === 'undefined') return;
-  NovelAIEngine.setKey(val || '');
-  if (proxy !== undefined) NovelAIEngine.setProxy(proxy || '');
-  const status = document.getElementById('nai-status');
-  if (status) {
-    if (val) {
-      status.textContent = '✓ Key saved.';
-      status.style.color = 'var(--green)';
-    } else {
-      status.textContent = 'Key cleared — idle engine only.';
-      status.style.color = 'var(--muted)';
-    }
-  }
-  showToast(val ? 'NAI key saved.' : 'NAI key cleared.');
-}
-
-async function testNAIKey() {
-  if (typeof NovelAIEngine === 'undefined') return;
-  const val   = document.getElementById('s-nai-key')?.value.trim();
-  const proxy = document.getElementById('s-nai-proxy')?.value.trim();
-  if (val) NovelAIEngine.setKey(val);
-  if (proxy) NovelAIEngine.setProxy(proxy);
-
-  const btn    = document.getElementById('nai-test-btn');
-  const status = document.getElementById('nai-status');
-  const corsWarn = document.getElementById('nai-cors-warning');
-  if (btn)    { btn.textContent = '…'; btn.disabled = true; }
-  if (status) { status.textContent = 'Testing connection…'; status.style.color = 'var(--muted)'; }
-  if (corsWarn) corsWarn.style.display = 'none';
-
-  const result = await NovelAIEngine.testConnection();
-
-  if (btn)    { btn.textContent = 'TEST'; btn.disabled = false; }
-  if (status) {
-    if (result.ok) {
-      status.textContent = '✓ Connected — Erato is ready.';
-      status.style.color = 'var(--green)';
-    } else {
-      status.textContent = `✗ ${result.message || 'Connection failed.'}`;
-      status.style.color = 'var(--accent)';
-      if (window.location.protocol === 'file:' && corsWarn) corsWarn.style.display = 'block';
-    }
-  }
-  showToast(ok ? 'NAI connection verified.' : 'NAI connection failed.');
 }
 
 
