@@ -18,7 +18,7 @@
 const NovelAIEngine = (() => {
 
   const NAI_ENDPOINT = 'https://api.novelai.net/ai/generate';
-  const MODEL        = 'erato-v1';  // Opus tier model
+  const MODEL        = 'llama-3-erato-v1';  // Opus tier model
   const LS_KEY       = 'hr2_nai_key';
   const LS_PROXY_KEY  = 'hr2_nai_proxy';
 
