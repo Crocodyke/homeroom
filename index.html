@@ -662,20 +662,11 @@ const SchoolClock = (() => {
   let _tickHandlers  = [];
   let _lastPhaseId   = null;
 
-  // Acceleration: 1 real second = ACCEL school seconds
-  const ACCEL = 10;
-  // Epoch: treat real-world time but scale minutes within the day
-  // We use actual wall-clock time so the school day repeats every real 2.4 hours
-  // (24 school hours / 10 accel = 2.4 real hours per school day)
 
-  function _schoolMinutes() {
-    const now = new Date();
-    const realMs = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) * 1000 + now.getMilliseconds();
-    const schoolMs = realMs * ACCEL;
-    const dayMs = 24 * 60 * 60 * 1000;
-    return (schoolMs % dayMs) / 60000; // school minutes since midnight
-  }
-
+function _localMinutes() {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+}
   function _isWeekend() {
     const day = new Date().getDay();
     return day === 0 || day === 6;
